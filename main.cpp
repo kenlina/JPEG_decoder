@@ -3,6 +3,7 @@
 #include<iomanip>
 using namespace std;
 #include<vector>
+#include<map>
 
 /********************************************
  *           define some constant           *                                                                
@@ -25,12 +26,18 @@ void read_JPEG(char *argv, vector<unsigned char> &buffer);
 void parse_JPEG(vector<unsigned char> &buffer);
 unsigned int Section_Start_Preprocess(vector<unsigned char> &buffer, size_t i);
 void parse_DQT(vector<unsigned char> &buffer, size_t i);
-
+void parse_DHT(vector<unsigned char> &buffer, size_t i);
+void parse_SOS(vector<unsigned char> &buffer, size_t i);
+void parse_SOF(vector<unsigned char> &buffer, size_t i);
 
 /********************************************
- *       define some global tables          *                                                                
+ *    define some global data structure     *                                                                
  *******************************************/
 int QuantTable[4][128] = {};  // QT最多四個, 每個64 or 128元素
+map< pair< unsigned char, unsigned int >, unsigned char> HuffmanTable[2][2];
+
+
+
 
 
 int main(int argc, char *argv[]){
@@ -85,6 +92,7 @@ void parse_JPEG(vector<unsigned char> &buffer){
                 case DHT_MARKER: // DHT
                     cout << "********************霍夫曼編碼表**********" << endl;
                     sectionSize = Section_Start_Preprocess(buffer,i);
+                    parse_DHT(buffer,i);
                     i += (sectionSize);
                     break; 
                 case COM_MARKER: // COM 跳過
@@ -146,7 +154,6 @@ unsigned int Section_Start_Preprocess(vector<unsigned char> &buffer, size_t i){
     cout << "Section size : " << Section_Size << endl;
     return Section_Size;
 }
-
 void parse_DQT(vector<unsigned char> &buffer, size_t i){
     /*******************讀取精度 && id***********************/
     i += 3; // 從DQT區段第一個byte開始(即2bytes長度之後第一個byte，記錄精度及id)
@@ -172,3 +179,68 @@ void parse_DQT(vector<unsigned char> &buffer, size_t i){
     }
     cout << endl;
 }
+
+void parse_DHT(vector<unsigned char> &buffer, size_t i){
+    i += 3; // 指向2bytes長度後面那個byte(DC/AC,id)
+
+    /*****************判斷DC/AC及id****************/
+    unsigned char type = (buffer[i] >> 4 == 0) ? 0 : 1;
+    unsigned char id = buffer[i] & 0x0F;
+    if(type) cout << "AC-" << static_cast<int>(id) << endl;
+    else cout << "DC-" << static_cast<int>(id) << endl;
+ 
+    ++i; // 現在i指向16bytes的第一個bytes
+
+    /******************計算葉節點個數****************/
+    unsigned int leaf_number = 0;
+    unsigned char leaf_distribution[16];
+    for(int j = 0; j < 16; ++j, ++i){
+        leaf_distribution[j] = buffer[i];
+        leaf_number += buffer[i];
+    }
+    // 現在i指向解碼資料的第一個byte
+
+    cout << "leaf distribution : ";
+    for (int n : leaf_distribution)
+        cout << n << " ";
+        
+    cout << endl << "leaf numbers : " << leaf_number << endl;
+
+    
+    /******************處理霍夫曼表****************/
+    // 先做出長度&編碼pair
+    auto len_code = new pair<unsigned char, unsigned int>[leaf_number];
+    int code = 0;
+    int current = 0;
+    for (int j = 0; j < 16; ++j){
+        for (int k = 0; k < leaf_distribution[j]; ++k){
+            len_code[current++] = make_pair( j + 1, code);
+            ++code;
+        }
+        code = code << 1;
+    }
+    // for ( int j = 0; j < leaf_number; ++j)
+    //     cout << int(len_code[j].first) << " : " << len_code[j].second << endl;
+    
+    //把長度&編碼pair and the corresponding plain text put in HuffmanTable
+    for ( int j = 0; j < leaf_number; ++j, ++i){
+        HuffmanTable[type][id][len_code[j]] = buffer[i];
+        cout << (int)len_code[j].first << "  " << len_code[j].second << " : " << (int)(HuffmanTable[type][id][len_code[j]]) << endl;
+    }
+    delete[] len_code;
+}
+void parse_SOS(vector<unsigned char> &buffer, size_t i){}
+void parse_SOF(vector<unsigned char> &buffer, size_t i){}
+
+
+
+
+
+
+
+
+
+
+
+
+
