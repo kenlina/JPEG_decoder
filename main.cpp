@@ -1,5 +1,6 @@
 #include<iostream>
 #include<fstream>
+#include<iomanip>
 using namespace std;
 #include<vector>
 
@@ -22,10 +23,14 @@ const int COM_MARKER = 0xFE;
  *******************************************/
 void read_JPEG(char *argv, vector<unsigned char> &buffer);
 void parse_JPEG(vector<unsigned char> &buffer);
-void Section_Start_Preprocess(vector<unsigned char> &buffer, size_t &i);
+unsigned int Section_Start_Preprocess(vector<unsigned char> &buffer, size_t i);
+void parse_DQT(vector<unsigned char> &buffer, size_t i);
 
 
-
+/********************************************
+ *       define some global tables          *                                                                
+ *******************************************/
+int QuantTable[4][128] = {};  // QT最多四個, 每個64 or 128元素
 
 
 int main(int argc, char *argv[]){
@@ -41,6 +46,7 @@ int main(int argc, char *argv[]){
 }
 
 void parse_JPEG(vector<unsigned char> &buffer){
+    unsigned int sectionSize = 0;
     for(size_t i = 0; i < buffer.size(); ++i){
         if( buffer[i] == 0xFF ){
             if( i + 1 >= buffer.size() ) break;
@@ -48,7 +54,7 @@ void parse_JPEG(vector<unsigned char> &buffer){
             unsigned char marker = buffer[++i];
             switch(marker){
                 case SOI_MARKER: // SOI
-                    cout << "Start of Image" << endl;
+                    cout << "********************Start of Image**********" << endl;
                     break;
                 case APP_MARKER: // APP 跳過
                 case 0xE1:
@@ -66,31 +72,38 @@ void parse_JPEG(vector<unsigned char> &buffer){
                 case 0xED:
                 case 0xEE:
                 case 0xEF:
-                    cout << "APP" << endl;
-                    Section_Start_Preprocess(buffer,i);
+                    cout << "********************APP**********" << endl;
+                    sectionSize = Section_Start_Preprocess(buffer,i);
+                    i += (sectionSize); //將指標移到區段最後
                     break;
                 case DQT_MARKER: // DQT
-                    cout << "量化表" << endl;
-                    Section_Start_Preprocess(buffer,i);
+                    cout << "********************量化表**********" << endl;
+                    sectionSize = Section_Start_Preprocess(buffer,i);
+                    parse_DQT(buffer,i);
+                    i += (sectionSize);
                     break;
                 case DHT_MARKER: // DHT
-                    cout << "霍夫曼編碼表" << endl;
-                    Section_Start_Preprocess(buffer,i);
+                    cout << "********************霍夫曼編碼表**********" << endl;
+                    sectionSize = Section_Start_Preprocess(buffer,i);
+                    i += (sectionSize);
                     break; 
                 case COM_MARKER: // COM 跳過
-                    cout << "COMMENT" << endl;
-                    Section_Start_Preprocess(buffer,i);
+                    cout << "********************COMMENT**********" << endl;
+                    sectionSize = Section_Start_Preprocess(buffer,i);
+                    i += (sectionSize);
                     break; 
                 case SOF_MARKER: // SOF
-                    cout << "Start of frame" << endl;
-                    Section_Start_Preprocess(buffer,i);
+                    cout << "********************Start of frame**********" << endl;
+                    sectionSize = Section_Start_Preprocess(buffer,i);
+                    i += (sectionSize);
                     break;
                 case SOS_MARKER: // SOS
-                    cout << "Start of scan" << endl;
-                    Section_Start_Preprocess(buffer,i);
+                    cout << "********************Start of scan**********" << endl;
+                    sectionSize = Section_Start_Preprocess(buffer,i);
+                    i += (sectionSize);
                     break; 
                 case EOI_MARKER: // EOI
-                    cout << "End of Image" << endl;
+                    cout << "********************End of Image**********" << endl;
                     break; // 結束解析
             }
         }
@@ -125,11 +138,37 @@ void read_JPEG(char *argv, vector<unsigned char> &buffer){
 
     img.close();
 }
-void Section_Start_Preprocess(vector<unsigned char> &buffer, size_t &i){
+unsigned int Section_Start_Preprocess(vector<unsigned char> &buffer, size_t i){
     unsigned int Section_Size =
     static_cast<unsigned int>(buffer[++i])*256 + 
     static_cast<unsigned int>(buffer[++i]);
     // i 現在指向第二個區段長度的byte
     cout << "Section size : " << Section_Size << endl;
-    i += (Section_Size - 2);
+    return Section_Size;
+}
+
+void parse_DQT(vector<unsigned char> &buffer, size_t i){
+    /*******************讀取精度 && id***********************/
+    i += 3; // 從DQT區段第一個byte開始(即2bytes長度之後第一個byte，記錄精度及id)
+    unsigned char precision;
+    precision = (buffer[i] >> 4 == 0) ? 8 : 16; // 第一個byte前四bits是精度
+    unsigned char id; 
+    id = buffer[i] & 0x0F; // 後四bits是量化表id，與 0000 1111 做bitwise and之後可得後四bits
+    cout << "量化表ID: " << static_cast<int>(id) << " , 量化表精度: " << static_cast<int>(precision) << endl;
+    ++i;   // 指向資料開始的地方
+
+    /*******************讀取QT data  ***********************/
+    precision /= 8;                                // 精度為 1 or 2
+    int table_size = (precision == 1) ? 64 : 128;  // 大小為 64 or 128
+    cout << "table size: " << table_size <<endl;
+    // j 從0到table size - 1, 
+    // k 從 i 到 i + table size -1 
+    for(int j = 0, k = i; k < i + table_size; ++j, ++k)
+        QuantTable[id][j] = buffer[k];
+
+    for(int k = 0; k < table_size; ++k){
+        if ( k % 8 == 0 ) cout << endl;
+        cout << setw(2) << setfill(' ') << QuantTable[id][k] << " ";
+    }
+    cout << endl;
 }
