@@ -36,7 +36,23 @@ void parse_SOF(vector<unsigned char> &buffer, size_t i);
 int QuantTable[4][128] = {};  // QT最多四個, 每個64 or 128元素
 map< pair< unsigned char, unsigned int >, unsigned char> HuffmanTable[2][2];
 
-
+/*顏色分量信息*/
+struct JPEGcomponent{
+    uint8_t ColorID;
+    uint8_t horizontalSampling;
+    uint8_t verticalSampling;
+    uint8_t QuantTableID;
+};
+/*SOF0*/
+struct SOF{
+    uint8_t  precision;
+    uint16_t height;
+    uint16_t width;
+    vector<JPEGcomponent> component;
+    SOF():component(4){}
+} SOF0;
+uint16_t maxHorizontalSampling = 0;
+uint16_t maxVerticalSampling = 0;
 
 
 
@@ -59,6 +75,7 @@ void parse_JPEG(vector<unsigned char> &buffer){
             if( i + 1 >= buffer.size() ) break;
             //*************marker is the byte next FF*************
             unsigned char marker = buffer[++i];
+            // i 現在指向marker
             switch(marker){
                 case SOI_MARKER: // SOI
                     cout << "********************Start of Image**********" << endl;
@@ -103,6 +120,7 @@ void parse_JPEG(vector<unsigned char> &buffer){
                 case SOF_MARKER: // SOF
                     cout << "********************Start of frame**********" << endl;
                     sectionSize = Section_Start_Preprocess(buffer,i);
+                    parse_SOF(buffer,i);
                     i += (sectionSize);
                     break;
                 case SOS_MARKER: // SOS
@@ -179,7 +197,6 @@ void parse_DQT(vector<unsigned char> &buffer, size_t i){
     }
     cout << endl;
 }
-
 void parse_DHT(vector<unsigned char> &buffer, size_t i){
     i += 3; // 指向2bytes長度後面那個byte(DC/AC,id)
 
@@ -219,18 +236,55 @@ void parse_DHT(vector<unsigned char> &buffer, size_t i){
         }
         code = code << 1;
     }
-    // for ( int j = 0; j < leaf_number; ++j)
-    //     cout << int(len_code[j].first) << " : " << len_code[j].second << endl;
-    
     //把長度&編碼pair and the corresponding plain text put in HuffmanTable
     for ( int j = 0; j < leaf_number; ++j, ++i){
         HuffmanTable[type][id][len_code[j]] = buffer[i];
-        cout << (int)len_code[j].first << "  " << len_code[j].second << " : " << (int)(HuffmanTable[type][id][len_code[j]]) << endl;
+        // cout << (int)len_code[j].first << "  " << len_code[j].second << " : " 
+        // << (int)(HuffmanTable[type][id][len_code[j]]) << endl;
     }
     delete[] len_code;
 }
 void parse_SOS(vector<unsigned char> &buffer, size_t i){}
-void parse_SOF(vector<unsigned char> &buffer, size_t i){}
+void parse_SOF(vector<unsigned char> &buffer, size_t i){
+    i += 3; // i現在指向兩byte長度後的下一個byte 即精度
+    /*存入精度*/
+    SOF0.precision = buffer[i];
+
+    /*compute height*/
+    uint16_t height = buffer[++i] * 256 + buffer[++i];
+    //  i現在指向兩byte高度的第二個byte
+    SOF0.height = height;
+
+    /*compute width*/
+    uint16_t width = buffer[++i] * 256 + buffer[++i];
+    //  i現在指向兩byte寬度的第二個byte
+    SOF0.width = width;
+
+    i += 2; //  i現在指向9 bytes 的第1個byte
+    /*存入component*/
+    for(int tmp = i; tmp < i + 9; tmp += 3){
+        SOF0.component[buffer[tmp]].ColorID = buffer[tmp];
+        SOF0.component[buffer[tmp]].horizontalSampling = buffer[tmp + 1] >> 4;
+        SOF0.component[buffer[tmp]].verticalSampling = buffer[tmp + 1] & 0x0F; 
+        SOF0.component[buffer[tmp]].QuantTableID = buffer[tmp+2];
+        if(SOF0.component[buffer[tmp]].horizontalSampling > maxHorizontalSampling)
+        maxHorizontalSampling = SOF0.component[buffer[tmp]].horizontalSampling;
+        if(SOF0.component[buffer[tmp]].verticalSampling > maxVerticalSampling)
+        maxVerticalSampling = SOF0.component[buffer[tmp]].verticalSampling;
+    }
+    cout << "精度: " << (int)SOF0.precision << endl;
+    cout << "圖高: " << SOF0.height << endl;
+    cout << "圖寬: " << SOF0.width << endl; 
+    cout << "Y ->  ID:" << (int)SOF0.component[1].ColorID << " 水平採樣率:" << (int)SOF0.component[1].horizontalSampling 
+    << " 垂直採樣率:" << (int)SOF0.component[1].verticalSampling << " 量化表ID:" << (int)SOF0.component[1].QuantTableID << endl;
+    cout << "Cb->  ID:" << (int)SOF0.component[2].ColorID << " 水平採樣率:" << (int)SOF0.component[2].horizontalSampling 
+    << " 垂直採樣率:" << (int)SOF0.component[2].verticalSampling << " 量化表ID:" << (int)SOF0.component[2].QuantTableID << endl;
+    cout << "Cr->  ID:" << (int)SOF0.component[3].ColorID << " 水平採樣率:" << (int)SOF0.component[3].horizontalSampling 
+    << " 垂直採樣率:" << (int)SOF0.component[3].verticalSampling << " 量化表ID:" << (int)SOF0.component[3].QuantTableID << endl;
+
+    cout << endl << "最大水平採樣率： " << maxHorizontalSampling << endl;
+    cout << "最大垂直採樣率： " << maxVerticalSampling << endl;
+}
 
 
 
