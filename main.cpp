@@ -49,10 +49,11 @@ struct SOF{
     uint16_t height;
     uint16_t width;
     vector<JPEGcomponent> component;
-    SOF():component(4){}
+    SOF():component(4){}// 扣掉id0不用id 1,2,3代表Y,Cb,Cr
 } SOF0;
 uint16_t maxHorizontalSampling = 0;
 uint16_t maxVerticalSampling = 0;
+uint16_t SOStable[4][2]; // 扣掉id0不用id 1,2,3代表Y,Cb,Cr, 每個顏色裡面有兩個元素0是DC的霍夫曼id,1是AC的霍夫曼id
 
 
 
@@ -126,6 +127,7 @@ void parse_JPEG(vector<unsigned char> &buffer){
                 case SOS_MARKER: // SOS
                     cout << "********************Start of scan**********" << endl;
                     sectionSize = Section_Start_Preprocess(buffer,i);
+                    parse_SOS(buffer,i);
                     i += (sectionSize);
                     break; 
                 case EOI_MARKER: // EOI
@@ -244,7 +246,17 @@ void parse_DHT(vector<unsigned char> &buffer, size_t i){
     }
     delete[] len_code;
 }
-void parse_SOS(vector<unsigned char> &buffer, size_t i){}
+void parse_SOS(vector<unsigned char> &buffer, size_t i){
+    i += 4; // i現在指向第一個顏色id
+    for (int tmp = i; tmp < i + 6; tmp += 2){
+        SOStable[buffer[tmp]][0] = buffer[tmp + 1] >> 4;
+        SOStable[buffer[tmp]][1] = buffer[tmp + 1] & 0x0F; 
+    }
+    for(int j = 1; j < 4; ++j){
+        cout<< "顏色ID: " << j << " DC對應霍夫曼ID: " << SOStable[j][0] << " AC對應霍夫曼ID: " << SOStable[j][1] << endl;
+    }
+
+}
 void parse_SOF(vector<unsigned char> &buffer, size_t i){
     i += 3; // i現在指向兩byte長度後的下一個byte 即精度
     /*存入精度*/
