@@ -29,6 +29,9 @@ void parse_DQT(vector<unsigned char> &buffer, size_t i);
 void parse_DHT(vector<unsigned char> &buffer, size_t i);
 void parse_SOS(vector<unsigned char> &buffer, size_t i);
 void parse_SOF(vector<unsigned char> &buffer, size_t i);
+void parse_DATA(vector<unsigned char> &buffer, size_t i);
+int readBit(vector<unsigned char> &buffer, size_t &bytePos, int &bitPos);
+
 
 /********************************************
  *    define some global data structure     *                                                                
@@ -128,7 +131,8 @@ void parse_JPEG(vector<unsigned char> &buffer){
                     cout << "********************Start of scan**********" << endl;
                     sectionSize = Section_Start_Preprocess(buffer,i);
                     parse_SOS(buffer,i);
-                    i += (sectionSize);
+                    i += (sectionSize + 1); // i現在指向壓縮數據的第一個byte
+                    parse_DATA(buffer,i);
                     break; 
                 case EOI_MARKER: // EOI
                     cout << "********************End of Image**********" << endl;
@@ -253,7 +257,7 @@ void parse_SOS(vector<unsigned char> &buffer, size_t i){
         SOStable[buffer[tmp]][1] = buffer[tmp + 1] & 0x0F; 
     }
     for(int j = 1; j < 4; ++j){
-        cout<< "顏色ID: " << j << " DC對應霍夫曼ID: " << SOStable[j][0] << " AC對應霍夫曼ID: " << SOStable[j][1] << endl;
+        cout<< "顏色ID: " << j << ", DC對應霍夫曼ID: " << SOStable[j][0] << ", AC對應霍夫曼ID: " << SOStable[j][1] << endl;
     }
 
 }
@@ -296,6 +300,31 @@ void parse_SOF(vector<unsigned char> &buffer, size_t i){
 
     cout << endl << "最大水平採樣率： " << maxHorizontalSampling << endl;
     cout << "最大垂直採樣率： " << maxVerticalSampling << endl;
+}
+void parse_DATA(vector<unsigned char> &buffer, size_t i){
+    int bitPos = 0;  // bitPos當作現在讀取哪個bit的指標 ， i 則是哪個byte的指標
+    
+
+
+}
+int readBit(vector<unsigned char> &buffer, size_t &bytePos, int &bitPos){
+    if(bytePos > 0 && buffer[bytePos] == 0x00 && buffer[bytePos - 1] == 0xFF) 
+        ++bytePos; // 出現0xFF00的狀況就跳過0x00
+    if (bytePos >= buffer.size()) {
+        cerr << "Reached end of buffer." << endl;
+        return -1;  
+    }
+    int bit = (buffer[bytePos] >> (7 - bitPos)) & 1;
+    ++bitPos;
+    if(bitPos == 8){
+        bitPos = 0;
+        ++bytePos;
+        if (bytePos == buffer.size() ) {
+            cerr << "Reached end of buffer." << endl;
+            return -1;  
+        }
+    }
+    return bit;
 }
 
 
