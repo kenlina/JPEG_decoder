@@ -18,26 +18,11 @@ const int EOI_MARKER = 0xD9;
 const int COM_MARKER = 0xFE;
 
 
-
-/********************************************
- *           define some functions          *                                                                
- *******************************************/
-void read_JPEG(char *argv, vector<unsigned char> &buffer);
-void parse_JPEG(vector<unsigned char> &buffer);
-unsigned int Section_Start_Preprocess(vector<unsigned char> &buffer, size_t i);
-void parse_DQT(vector<unsigned char> &buffer, size_t i);
-void parse_DHT(vector<unsigned char> &buffer, size_t i);
-void parse_SOS(vector<unsigned char> &buffer, size_t i);
-void parse_SOF(vector<unsigned char> &buffer, size_t i);
-void parse_DATA(vector<unsigned char> &buffer, size_t i);
-int readBit(vector<unsigned char> &buffer, size_t &bytePos, int &bitPos);
-
-
 /********************************************
  *    define some global data structure     *                                                                
  *******************************************/
 int QuantTable[4][128] = {};  // QT最多四個, 每個64 or 128元素
-map< pair< unsigned char, unsigned int >, unsigned char> HuffmanTable[2][2];
+map< pair< unsigned char, unsigned int >, unsigned char> HuffmanTable[2][2];// DC or AC, id 0/1
 
 /*顏色分量信息*/
 struct JPEGcomponent{
@@ -58,6 +43,42 @@ uint16_t maxHorizontalSampling = 0;
 uint16_t maxVerticalSampling = 0;
 uint16_t SOStable[4][2]; // 扣掉id0不用id 1,2,3代表Y,Cb,Cr, 每個顏色裡面有兩個元素0是DC的霍夫曼id,1是AC的霍夫曼id
 
+// 定義block為8*8的double
+typedef double BLOCK[8][8];
+
+struct ACcoefficient {
+    uint16_t zeros;
+    uint16_t length;
+    int value;
+};
+
+
+
+/********************************************
+ *           define some functions          *                                                                
+ *******************************************/
+void read_JPEG(char *argv, vector<unsigned char> &buffer);
+void parse_JPEG(vector<unsigned char> &buffer);
+unsigned int Section_Start_Preprocess(vector<unsigned char> &buffer, size_t i);
+void parse_DQT(vector<unsigned char> &buffer, size_t i);
+void parse_DHT(vector<unsigned char> &buffer, size_t i);
+void parse_SOS(vector<unsigned char> &buffer, size_t i);
+void parse_SOF(vector<unsigned char> &buffer, size_t i);
+void parse_DATA(vector<unsigned char> &data);
+int readBit(vector<unsigned char> &data);
+int getDClenth(vector<unsigned char> &data, int ColorID);
+int readDCvalue(vector<unsigned char> &data,int ColorID);
+unsigned char getACinfo(vector<unsigned char> &data, int ColorID);
+ACcoefficient readACvalue(vector<unsigned char> &data,int ColorID);
+
+
+
+
+
+
+
+
+
 
 
 int main(int argc, char *argv[]){
@@ -74,6 +95,7 @@ int main(int argc, char *argv[]){
 
 void parse_JPEG(vector<unsigned char> &buffer){
     unsigned int sectionSize = 0;
+    vector<unsigned char> data;
     for(size_t i = 0; i < buffer.size(); ++i){
         if( buffer[i] == 0xFF ){
             if( i + 1 >= buffer.size() ) break;
@@ -132,7 +154,8 @@ void parse_JPEG(vector<unsigned char> &buffer){
                     sectionSize = Section_Start_Preprocess(buffer,i);
                     parse_SOS(buffer,i);
                     i += (sectionSize + 1); // i現在指向壓縮數據的第一個byte
-                    parse_DATA(buffer,i);
+                    data.insert( data.begin(), buffer.begin() + i, buffer.end() );
+                    parse_DATA(data);
                     break; 
                 case EOI_MARKER: // EOI
                     cout << "********************End of Image**********" << endl;
@@ -301,34 +324,124 @@ void parse_SOF(vector<unsigned char> &buffer, size_t i){
     cout << endl << "最大水平採樣率： " << maxHorizontalSampling << endl;
     cout << "最大垂直採樣率： " << maxVerticalSampling << endl;
 }
-void parse_DATA(vector<unsigned char> &buffer, size_t i){
-    int bitPos = 0;  // bitPos當作現在讀取哪個bit的指標 ， i 則是哪個byte的指標
-    
+/*
+    4:4:4： 
+    如果所有分量的 H 和 V 採樣因子都相同，例如都是 1/1，則採樣格式為 4:4:4。
+    這表示 Y、Cb 和 Cr 分量都是以同樣的率採樣。在這種情況下，每個 MCU 包含 1 塊 Y、1 塊 Cb 和 1 塊 Cr，共 3 塊。
+    MCU 的大小是 8x8 像素。
 
+    4:2:2： 
+    如果 Y 分量的水平採樣率是 Cb 和 Cr 的兩倍，垂直採樣率相同，例如 Y 為 2/1，Cb 和 Cr 為 1/1，則採樣格式為 4:2:2。
+    這表示 Y 分量是色度分量的兩倍採樣率（只在水平方向）。每個 MCU 包含 2 塊 Y、1 塊 Cb 和 1 塊 Cr，共 4 塊。
+    MCU 的大小是 16x8 像素（水平方向兩倍）。
+
+    4:2:0： 
+    如果 Y 分量的水平和垂直採樣率都是 Cb 和 Cr 的兩倍，例如 Y 為 2/2，Cb 和 Cr 為 1/1，則採樣格式為 4:2:0。
+    這是最常見的採樣格式，其中 Y 分量的採樣率是色度分量的兩倍（在水平和垂直方向）。
+    在這種情況下，每個 MCU 包含 4 塊 Y、1 塊 Cb 和 1 塊 Cr，共 6 塊。
+    MCU 的大小是 16x16 像素（水平和垂直方向都兩倍）。
+    
+*/
+void parse_DATA(vector<unsigned char> &data){
+    int dc = readDCvalue(data,1);
+    cout <<"第一個DC： " << dc <<endl;
+    readACvalue(data,1);
 
 }
-int readBit(vector<unsigned char> &buffer, size_t &bytePos, int &bitPos){
-    if(bytePos > 0 && buffer[bytePos] == 0x00 && buffer[bytePos - 1] == 0xFF) 
-        ++bytePos; // 出現0xFF00的狀況就跳過0x00
-    if (bytePos >= buffer.size()) {
-        cerr << "Reached end of buffer." << endl;
+int readBit(vector<unsigned char> &data ){
+    static int bytePos = 0;
+    static int bitPos = 0;
+    if (bytePos == data.size() - 2 ) {
+        cerr << "Reached end of image by carry out the bytePos." << endl;
         return -1;  
     }
-    int bit = (buffer[bytePos] >> (7 - bitPos)) & 1;
+    if(bytePos > 0 && data[bytePos] == 0x00 && data[bytePos - 1] == 0xFF) 
+        ++bytePos; // 出現0xFF00的狀況就跳過0x00
+    if (bytePos >= data.size()- 2) {
+        cerr << "Reached end of image ( after0xFF00 )." << endl;
+        return -1;  
+    }
+    if(bytePos < data.size()-1 && data[bytePos] == 0xFF && data[bytePos + 1] != 0x00){
+        cerr << "Reached another section." << endl;
+        return -1;  
+    }
+    int bit = (data[bytePos] >> (7 - bitPos)) & 1;
     ++bitPos;
     if(bitPos == 8){
         bitPos = 0;
         ++bytePos;
-        if (bytePos == buffer.size() ) {
-            cerr << "Reached end of buffer." << endl;
-            return -1;  
-        }
     }
     return bit;
 }
-
-
-
+int getDClenth(vector<unsigned char> &data, int ColorID){
+    int code = 0;
+    int len = 0;
+    while(len<16){
+        ++len;
+        code = code << 1;
+        int bit = readBit(data);
+        code += bit;
+        if( HuffmanTable[0][SOF0.component[ColorID].QuantTableID].find(make_pair(len,code))
+         != HuffmanTable[0][SOF0.component[ColorID].QuantTableID].end() ){
+            return (int)HuffmanTable[0][SOF0.component[ColorID].QuantTableID][make_pair(len,code)];
+         }
+    }
+    cerr << "Can't find the key." << endl;
+    return 0;
+}
+int readDCvalue(vector<unsigned char> &data,int ColorID){
+    int length = getDClenth(data,ColorID);
+    if(length == 0) return 0;
+    int FirstBit = readBit(data);
+    int value = 1;
+    for(int i = 1; i < length ; ++i ){
+        bool bit = readBit(data);
+        value *= 2;
+        if(FirstBit)
+            value += bit;
+        else
+            value += !bit;
+    }
+    return FirstBit ? value : -value;
+}
+ACcoefficient readACvalue(vector<unsigned char> &data,int ColorID){
+    int info = getACinfo(data,ColorID);
+    unsigned char zeros = info >> 4;
+    unsigned char length = info & 0x0F;
+    if (info == 0) 
+        return ACcoefficient{0,0,0};
+    else if (info == 0xF0) 
+        return ACcoefficient{16, 0, 0};
+    int FirstBit = readBit(data);
+    int value = 1;
+    for(int i = 1; i < length ; ++i ){
+        bool bit = readBit(data);
+        value *= 2;
+        if(FirstBit)
+            value += bit;
+        else
+            value += !bit;
+    }
+    value = FirstBit ? value : -value;
+    cout <<"AC length,zeros,value: "<<(int)length<< "  "<<(int)zeros<<"  " << value<<endl;
+    return ACcoefficient{zeros, length, value};
+}
+unsigned char getACinfo(vector<unsigned char> &data, int ColorID){
+    int code = 0;
+    int len = 0;
+    while(len<16){
+        ++len;
+        code = code << 1;
+        int bit = readBit(data);
+        code += bit;
+        if( HuffmanTable[1][SOF0.component[ColorID].QuantTableID].find(make_pair(len,code))
+         != HuffmanTable[1][SOF0.component[ColorID].QuantTableID].end() ){
+            return HuffmanTable[1][SOF0.component[ColorID].QuantTableID][make_pair(len,code)];
+         }
+    }
+    cerr << "Can't find the key." << endl;
+    return 0;
+}
 
 
 
