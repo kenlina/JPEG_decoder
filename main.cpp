@@ -366,6 +366,7 @@ void parse_DATA(vector<unsigned char> &data){
     for( int v = 0; v < vMCU; ++v)
         for( int h = 0; h < hMCU; ++h){
             MCU curMCU = readMCU(data);
+            inverseQuantify(curMCU);
             showMCU(curMCU);
         }
 }
@@ -444,7 +445,7 @@ ACcoefficient readACvalue(vector<unsigned char> &data,int ColorID){
             value += !bit;
     }
     value = FirstBit ? value : -value;
-    cout <<"AC length,zeros,value: "<<(int)length<< "  "<<(int)zeros<<"  " << value<<endl;
+    // cout <<"AC length,zeros,value: "<<(int)length<< "  "<<(int)zeros<<"  " << value<<endl;
     return ACcoefficient{zeros, length, value};
 }
 unsigned char getACinfo(vector<unsigned char> &data, int ColorID){
@@ -517,7 +518,12 @@ void showMCU(MCU curMCU){
     }
 }
 void inverseQuantify(MCU &curMCU){
-
+    for ( int id = 1; id <= 3; ++id )
+        for ( int vs = 0; vs < SOF0.component[id].verticalSampling; ++vs )
+            for ( int hs = 0; hs < SOF0.component[id].horizontalSampling; ++hs)
+                for ( int i = 0; i < 8; ++i )
+                    for ( int j = 0; j < 8; ++j )
+                        curMCU.mcu[id][vs][hs][i][j] *= QuantTable[SOF0.component[id].QuantTableID][i*8+j];
 }
 
 
