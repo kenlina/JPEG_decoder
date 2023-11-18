@@ -4,6 +4,7 @@
 using namespace std;
 #include<vector>
 #include<map>
+#include<cmath>
 
 /********************************************
  *           define some constant           *                                                                
@@ -51,6 +52,11 @@ struct ACcoefficient {
     uint16_t length;
     int value;
 };
+class MCU{
+public:
+    BLOCK mcu[4][2][2];// id對應顏色 id0不用
+
+};
 
 
 
@@ -70,8 +76,8 @@ int getDClenth(vector<unsigned char> &data, int ColorID);
 int readDCvalue(vector<unsigned char> &data,int ColorID);
 unsigned char getACinfo(vector<unsigned char> &data, int ColorID);
 ACcoefficient readACvalue(vector<unsigned char> &data,int ColorID);
-
-
+MCU readMCU(vector<unsigned char> &data);
+void showMCU(MCU curMCU);
 
 
 
@@ -343,10 +349,17 @@ void parse_SOF(vector<unsigned char> &buffer, size_t i){
     
 */
 void parse_DATA(vector<unsigned char> &data){
-    int dc = readDCvalue(data,1);
-    cout <<"第一個DC： " << dc <<endl;
-    readACvalue(data,1);
-
+    double vMCU = ceil(double(SOF0.height)/double(maxVerticalSampling*8));
+    double hMCU = ceil(double(SOF0.width)/double(maxHorizontalSampling*8));
+    cout << "圖片高度：" << SOF0.height << " 圖片寬度：" << SOF0.width <<endl;
+    cout << "MCU高度 ： " << maxVerticalSampling*8 << "  MCU寬度： " << maxHorizontalSampling*8 <<endl;
+    cout << "垂直MCU ： " << vMCU << "  水平MCU： " << hMCU <<endl;
+    // cout << "********************開始讀取MCU********************"<<endl;
+    // for( int v = 0; v < vMCU; ++v)
+    //     for( int h = 0; h < hMCU; ++h){
+    //         MCU curMCU = readMCU(data);
+    //         showMCU(curMCU);
+    //     }
 }
 int readBit(vector<unsigned char> &data ){
     static int bytePos = 0;
@@ -381,12 +394,12 @@ int getDClenth(vector<unsigned char> &data, int ColorID){
         code = code << 1;
         int bit = readBit(data);
         code += bit;
-        if( HuffmanTable[0][SOF0.component[ColorID].QuantTableID].find(make_pair(len,code))
-         != HuffmanTable[0][SOF0.component[ColorID].QuantTableID].end() ){
-            return (int)HuffmanTable[0][SOF0.component[ColorID].QuantTableID][make_pair(len,code)];
+        if( HuffmanTable[0][SOStable[ColorID][0]].find(make_pair(len,code))
+         != HuffmanTable[0][SOStable[ColorID][0]].end() ){
+            return (int)HuffmanTable[0][SOStable[ColorID][0]][make_pair(len,code)];
          }
     }
-    cerr << "Can't find the key." << endl;
+    cerr << "Can't find the key in function 'getDClength'." << endl;
     return 0;
 }
 int readDCvalue(vector<unsigned char> &data,int ColorID){
@@ -408,7 +421,7 @@ ACcoefficient readACvalue(vector<unsigned char> &data,int ColorID){
     int info = getACinfo(data,ColorID);
     unsigned char zeros = info >> 4;
     unsigned char length = info & 0x0F;
-    if (info == 0) 
+    if (info == 0x00) 
         return ACcoefficient{0,0,0};
     else if (info == 0xF0) 
         return ACcoefficient{16, 0, 0};
@@ -434,16 +447,67 @@ unsigned char getACinfo(vector<unsigned char> &data, int ColorID){
         code = code << 1;
         int bit = readBit(data);
         code += bit;
-        if( HuffmanTable[1][SOF0.component[ColorID].QuantTableID].find(make_pair(len,code))
-         != HuffmanTable[1][SOF0.component[ColorID].QuantTableID].end() ){
-            return HuffmanTable[1][SOF0.component[ColorID].QuantTableID][make_pair(len,code)];
+        if( HuffmanTable[1][SOStable[ColorID][1]].find(make_pair(len,code))
+         != HuffmanTable[1][SOStable[ColorID][1]].end() ){
+            return HuffmanTable[1][SOStable[ColorID][1]][make_pair(len,code)];
          }
     }
-    cerr << "Can't find the key." << endl;
+    cerr << "Can't find the key in function 'getACinfo'." << endl;
     return 0;
 }
+MCU readMCU(vector<unsigned char> &data){
+    MCU curMCU;
+    static int lastDC[4] = {}; // 開一個readMCU共用的DC陣列 index代表id，id0不用
+    for ( int id = 1; id <= 3; ++id )
+        for ( int vs = 0; vs < SOF0.component[id].verticalSampling; ++vs )
+            for ( int hs = 0; hs < SOF0.component[id].horizontalSampling; ++hs){
+                int DCdiff = readDCvalue(data,id);
+                int DCvalue = DCdiff + lastDC[id];
+                lastDC[id] = DCvalue;
+                curMCU.mcu[id][vs][hs][0][0] = DCvalue;
+                int curPOS = 1; // 在8*8的第一個位置(從零開始)，由左至右 由上至下
+                while (curPOS<64) // 讀取此塊的63AC係數
+                {
+                    ACcoefficient curAC = readACvalue(data,id);
+                    if ( curAC.length == 0 && curAC.zeros == 0 )  // 讀到0x00 ,EOB
+                        break;
+                    else if ( curAC.length == 0 && curAC.zeros == 16 ){ // 讀到0xF0 ,16個零
+                        int curPOSfixed = curPOS;
+                        for ( ; curPOS < curPOSfixed + 16; ++curPOS )   // 放入16個零
+                            curMCU.mcu[id][vs][hs][curPOS/8][curPOS%8] = 0;
+                    }
+                    else{  // 正常讀到AC
+                        int curPOSfixed = curPOS;
+                        for ( ; curPOS < curPOSfixed + curAC.zeros; ++curPOS )   // 放入zeros個零
+                            curMCU.mcu[id][vs][hs][curPOS/8][curPOS%8] = 0;
+                        curMCU.mcu[id][vs][hs][curPOS/8][curPOS%8] = curAC.value;
+                        ++curPOS;
+                    }
 
-
+                }
+                while (curPOS<64){
+                    curMCU.mcu[id][vs][hs][curPOS/8][curPOS%8] = 0;
+                    ++curPOS;
+                }
+            }
+    return curMCU;
+}
+void showMCU(MCU curMCU){
+    printf("*************** mcu show ***********************\n");
+    for (int id = 1; id <= 3; id++) {
+        for (int h = 0; h < SOF0.component[id].verticalSampling; h++) {
+            for (int w = 0; w < SOF0.component[id].horizontalSampling; w++) {
+                printf("mcu id: %d, %d %d\n", id, h, w);
+                for (int i = 0; i < 8; i++) {
+                    for (int j = 0; j < 8; j++) {
+                        printf("%lf ", curMCU.mcu[id][h][w][i][j]);
+                    }
+                    printf("\n");
+                }
+            }
+        }
+    }
+}
 
 
 
