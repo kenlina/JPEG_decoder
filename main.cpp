@@ -79,7 +79,7 @@ ACcoefficient readACvalue(vector<unsigned char> &data,int ColorID);
 MCU readMCU(vector<unsigned char> &data);
 void showMCU(MCU curMCU);
 void inverseQuantify(MCU &curMCU);
-
+MCU inverseZigzag(MCU &curMCU);
 
 
 
@@ -357,16 +357,20 @@ void parse_SOF(vector<unsigned char> &buffer, size_t i){
     
 */
 void parse_DATA(vector<unsigned char> &data){
+    /*************************先計算需要多少MCU再來解碼MCU***************************/
     double vMCU = ceil(double(SOF0.height)/double(maxVerticalSampling*8));
     double hMCU = ceil(double(SOF0.width)/double(maxHorizontalSampling*8));
     cout << "圖片高度：" << SOF0.height << " 圖片寬度：" << SOF0.width <<endl;
     cout << "MCU高度 ： " << maxVerticalSampling*8 << "  MCU寬度： " << maxHorizontalSampling*8 <<endl;
     cout << "垂直MCU ： " << vMCU << "  水平MCU： " << hMCU <<endl;
+
+    /****************************開讀****************************/
     cout << "********************開始讀取MCU********************"<<endl;
     for( int v = 0; v < vMCU; ++v)
         for( int h = 0; h < hMCU; ++h){
             MCU curMCU = readMCU(data);
             inverseQuantify(curMCU);
+            curMCU = inverseZigzag(curMCU);
             showMCU(curMCU);
         }
 }
@@ -525,8 +529,28 @@ void inverseQuantify(MCU &curMCU){
                     for ( int j = 0; j < 8; ++j )
                         curMCU.mcu[id][vs][hs][i][j] *= QuantTable[SOF0.component[id].QuantTableID][i*8+j];
 }
-
-
+MCU inverseZigzag(MCU &curMCU){
+    MCU afterZigzag;
+    BLOCK zigzag = {
+                    { 0,  1,  5,  6, 14, 15, 27, 28},
+                    { 2,  4,  7, 13, 16, 26, 29, 42},
+                    { 3,  8, 12, 17, 25, 30, 41, 43},
+                    { 9, 11, 18, 24, 31, 40, 44, 53},
+                    {10, 19, 23, 32, 39, 45, 52, 54},
+                    {20, 22, 33, 38, 46, 51, 55, 60},
+                    {21, 34, 37, 47, 50, 56, 59, 61},
+                    {35, 36, 48, 49, 57, 58, 62, 63}
+    };
+    for ( int id = 1; id <= 3; ++id )
+        for ( int vs = 0; vs < SOF0.component[id].verticalSampling; ++vs )
+            for ( int hs = 0; hs < SOF0.component[id].horizontalSampling; ++hs)
+                for ( int i = 0; i < 8; ++i )
+                    for ( int j = 0; j < 8; ++j ){
+                        int zigzagOrder = zigzag[i][j];
+                        afterZigzag.mcu[id][vs][hs][i][j] = curMCU.mcu[id][vs][hs][zigzagOrder/8][zigzagOrder%8];
+                    }
+    return afterZigzag;
+}
 
 
 
