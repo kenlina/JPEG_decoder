@@ -58,6 +58,12 @@ public:
 
 };
 
+double cos_cache[200];
+const double PI = 3.14159265358979323846;
+
+
+
+
 
 
 /********************************************
@@ -80,7 +86,7 @@ MCU readMCU(vector<unsigned char> &data);
 void showMCU(MCU curMCU);
 void inverseQuantify(MCU &curMCU);
 MCU inverseZigzag(MCU &curMCU);
-
+void iDCT(MCU &curMCU);
 
 
 
@@ -371,6 +377,7 @@ void parse_DATA(vector<unsigned char> &data){
             MCU curMCU = readMCU(data);
             inverseQuantify(curMCU);
             curMCU = inverseZigzag(curMCU);
+            iDCT(curMCU);
             showMCU(curMCU);
         }
 }
@@ -551,8 +558,46 @@ MCU inverseZigzag(MCU &curMCU){
                     }
     return afterZigzag;
 }
+double c(int i) {
+        static double x = 1.0/sqrt(2.0);
+        if (i == 0) {
+            return x;
+        } else {
+            return 1.0;
+        }
+}
+void iDCT(MCU &curMCU){
+    /**************初始化******************/
+    for (int i = 0; i < 200; i++) {
+        cos_cache[i] = cos(i * PI / 16.0);
+    }
 
-
-
-
+    for (int id = 1; id <= 3; id++) 
+            for (int vs = 0; vs < SOF0.component[id].verticalSampling; ++vs) 
+                for (int hs = 0; hs < SOF0.component[id].horizontalSampling; ++hs) {
+                    double tmp[8][8] = {0};
+                    double s[8][8] = {};
+                    for (int j = 0; j < 8; j++) {
+                        for (int x = 0; x < 8; x++) {
+                            for (int y = 0; y < 8; y++) {
+                                s[j][x] += c (y) * curMCU.mcu[id][vs][hs][x][y] * cos_cache[(j + j + 1) * y];
+                            }
+                            s[j][x] = s[j][x] / 2.0;
+                        }
+                    }
+                    for (int i = 0; i < 8; i++) {
+                        for (int j = 0; j < 8; j++) {
+                            for (int x = 0; x < 8; x++) {
+                                tmp[i][j] += c(x) * s[j][x] * cos_cache[(i + i + 1) * x];
+                            }
+                            tmp[i][j] = tmp[i][j] / 2.0;
+                        }
+                    }
+                    for (int i = 0; i < 8; i++) {
+                        for (int j = 0; j < 8; j++) {
+                            curMCU.mcu[id][vs][hs][i][j] = tmp[i][j];
+                        }
+                    }
+                }
+}
 
