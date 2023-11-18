@@ -78,7 +78,7 @@ unsigned char getACinfo(vector<unsigned char> &data, int ColorID);
 ACcoefficient readACvalue(vector<unsigned char> &data,int ColorID);
 MCU readMCU(vector<unsigned char> &data);
 void showMCU(MCU curMCU);
-
+void inverseQuantify(MCU &curMCU);
 
 
 
@@ -516,7 +516,9 @@ void showMCU(MCU curMCU){
         }
     }
 }
+void inverseQuantify(MCU &curMCU){
 
+}
 
 
 
