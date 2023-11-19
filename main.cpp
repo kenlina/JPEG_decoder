@@ -60,6 +60,10 @@ public:
 
 double cos_cache[200];
 const double PI = 3.14159265358979323846;
+struct RGB
+{
+    int R,G,B;
+};
 
 
 
@@ -87,7 +91,7 @@ void showMCU(MCU curMCU);
 void inverseQuantify(MCU &curMCU);
 MCU inverseZigzag(MCU &curMCU);
 void iDCT(MCU &curMCU);
-
+vector<vector<RGB>> YCbCrtoRGB(MCU &curMCU);
 
 
 
@@ -600,4 +604,18 @@ void iDCT(MCU &curMCU){
                     }
                 }
 }
+vector<vector<RGB>> YCbCrtoRGB(MCU &curMCU){
+    vector<vector<RGB>> rgb;
+    /******************初始化大小********************/
+    rgb.resize(maxVerticalSampling*8);
+    for ( int i = 0; i < rgb.size(); ++i )
+        rgb[i].resize(maxHorizontalSampling*8);
+    /*****************變成一個MCU大小的RGB********************/
 
+    for ( int i = 0; i < maxVerticalSampling * 8; ++i )
+        for( int j = 0; j < maxHorizontalSampling * 8; ++j ){
+            //進行轉換先升採樣再轉換色彩空間
+        }
+    
+    return rgb;
+}
