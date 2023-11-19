@@ -106,6 +106,7 @@ int main(int argc, char *argv[]){
     vector<unsigned char> buffer;
     read_JPEG(argv[1],buffer);
     parse_JPEG(buffer);
+    cout << "\nmy_photo.bmp is stored in the folder.\n";
     return 0;
 }
 
