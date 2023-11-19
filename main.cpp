@@ -382,7 +382,7 @@ void parse_DATA(vector<unsigned char> &data){
     BMP *bmp = BMP_Create(bmp_width, bmp_height, 24);
 
     /****************************開讀****************************/
-    cout << "********************開始讀取MCU和反譯********************"<<endl;
+    cout << "********************開始讀取MCU和輸出********************"<<endl;
     for( int v = 0; v < vMCU; ++v)
         for( int h = 0; h < hMCU; ++h){
             MCU curMCU = readMCU(data);
@@ -390,6 +390,17 @@ void parse_DATA(vector<unsigned char> &data){
             curMCU = inverseZigzag(curMCU);
             iDCT(curMCU);
             vector< vector<RGB> > rgb = YCbCrtoRGB(curMCU);
+            /*********************升採樣偵錯********************/
+            // cout << "**********************RGB的R***************************"<<endl;
+            // cout << "MCU: " << v << " , " << h << endl;
+            // for(int i = 0; i < rgb.size(); ++i){
+            //     for(int j = 0; j < rgb.size(); ++j){
+            //         cout << setw(3) << setfill(' ') << rgb[i][j].R<<" ";
+            //     }
+            //     cout<<endl;
+            // }
+            // cout<<endl;
+
             // 使用BMP_SetPixelRGB來生成BMP檔
             for (int i = 0; i < MCUheight; ++i) 
                 for (int j = 0; j < MCUwidth; ++j) {
@@ -642,21 +653,21 @@ vector<vector<RGB>> YCbCrtoRGB(MCU &curMCU){
             double Y = curMCU.mcu[1]
             [i / (MCUheight / SOF0.component[1].verticalSampling)]
             [j / (MCUwidth / SOF0.component[1].horizontalSampling)]
-            [i * SOF0.component[1].verticalSampling / maxVerticalSampling]
-            [j * SOF0.component[1].horizontalSampling / maxHorizontalSampling];
+            [i * SOF0.component[1].verticalSampling / maxVerticalSampling % 8]
+            [j * SOF0.component[1].horizontalSampling / maxHorizontalSampling % 8];
 
             double Cb = curMCU.mcu[2]
             [i / (MCUheight / SOF0.component[2].verticalSampling)]
             [j / (MCUwidth / SOF0.component[2].horizontalSampling)]
-            [i * SOF0.component[2].verticalSampling / maxVerticalSampling]
-            [j * SOF0.component[2].horizontalSampling / maxHorizontalSampling];
+            [i * SOF0.component[2].verticalSampling / maxVerticalSampling % 8]
+            [j * SOF0.component[2].horizontalSampling / maxHorizontalSampling % 8];
 
 
             double Cr = curMCU.mcu[3]
             [i / (MCUheight / SOF0.component[3].verticalSampling)]
             [j / (MCUwidth / SOF0.component[3].horizontalSampling)]
-            [i * SOF0.component[3].verticalSampling / maxVerticalSampling]
-            [j * SOF0.component[3].horizontalSampling / maxHorizontalSampling];
+            [i * SOF0.component[3].verticalSampling / maxVerticalSampling % 8]
+            [j * SOF0.component[3].horizontalSampling / maxHorizontalSampling % 8];
             //接者轉成RGB
             rgb[i][j].R = min(max(int(Y + 1.402 * Cr + 128), 0), 255);
             rgb[i][j].G = min(max(int(Y - 0.344136 * Cb - 0.714136 * Cr + 128), 0), 255);
