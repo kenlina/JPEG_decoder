@@ -5,6 +5,7 @@ using namespace std;
 #include<vector>
 #include<map>
 #include<cmath>
+#include "qdbmp.h"
 
 /********************************************
  *           define some constant           *                                                                
@@ -55,7 +56,6 @@ struct ACcoefficient {
 class MCU{
 public:
     BLOCK mcu[4][2][2];// id對應顏色 id0不用
-
 };
 
 double cos_cache[200];
@@ -606,15 +606,40 @@ void iDCT(MCU &curMCU){
 }
 vector<vector<RGB>> YCbCrtoRGB(MCU &curMCU){
     vector<vector<RGB>> rgb;
+    /********************定義MCU高寬**********************/
+    int MCUheight = maxVerticalSampling * 8;
+    int MCUwidth  = maxHorizontalSampling * 8;
     /******************初始化大小********************/
-    rgb.resize(maxVerticalSampling*8);
+    rgb.resize(MCUheight);
     for ( int i = 0; i < rgb.size(); ++i )
-        rgb[i].resize(maxHorizontalSampling*8);
+        rgb[i].resize(MCUwidth);
     /*****************變成一個MCU大小的RGB********************/
 
-    for ( int i = 0; i < maxVerticalSampling * 8; ++i )
-        for( int j = 0; j < maxHorizontalSampling * 8; ++j ){
-            //進行轉換先升採樣再轉換色彩空間
+    for ( int i = 0; i < MCUheight; ++i )
+        for( int j = 0; j < MCUwidth; ++j ){
+            //進行轉換先升採樣
+            double Y = curMCU.mcu[1]
+            [i / (MCUheight / SOF0.component[1].verticalSampling)]
+            [j / (MCUwidth / SOF0.component[1].horizontalSampling)]
+            [i * SOF0.component[1].verticalSampling / maxVerticalSampling]
+            [j * SOF0.component[1].horizontalSampling / maxHorizontalSampling];
+
+            double Cb = curMCU.mcu[2]
+            [i / (MCUheight / SOF0.component[2].verticalSampling)]
+            [j / (MCUwidth / SOF0.component[2].horizontalSampling)]
+            [i * SOF0.component[2].verticalSampling / maxVerticalSampling]
+            [j * SOF0.component[2].horizontalSampling / maxHorizontalSampling];
+
+
+            double Cr = curMCU.mcu[3]
+            [i / (MCUheight / SOF0.component[3].verticalSampling)]
+            [j / (MCUwidth / SOF0.component[3].horizontalSampling)]
+            [i * SOF0.component[3].verticalSampling / maxVerticalSampling]
+            [j * SOF0.component[3].horizontalSampling / maxHorizontalSampling];
+            //接者轉成RGB
+            rgb[i][j].R = min(max(int(Y + 1.402 * (Cr - 128)), 0), 255);
+            rgb[i][j].G = min(max(int(Y - 0.344136 * (Cb - 128) - 0.714136 * (Cr - 128)), 0), 255);
+            rgb[i][j].B = min(max(int(Y + 1.772 * (Cb - 128)), 0), 255);
         }
     
     return rgb;
