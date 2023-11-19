@@ -367,6 +367,8 @@ void parse_SOF(vector<unsigned char> &buffer, size_t i){
     
 */
 void parse_DATA(vector<unsigned char> &data){
+    int MCUheight = maxVerticalSampling * 8;
+    int MCUwidth  = maxHorizontalSampling * 8;
     /*************************先計算需要多少MCU再來解碼MCU***************************/
     double vMCU = ceil(double(SOF0.height)/double(maxVerticalSampling*8));
     double hMCU = ceil(double(SOF0.width)/double(maxHorizontalSampling*8));
@@ -374,16 +376,35 @@ void parse_DATA(vector<unsigned char> &data){
     cout << "MCU高度 ： " << maxVerticalSampling*8 << "  MCU寬度： " << maxHorizontalSampling*8 <<endl;
     cout << "垂直MCU ： " << vMCU << "  水平MCU： " << hMCU <<endl;
 
+    /*******************建立一個bmp物件*********************/
+    int bmp_width = 8 * maxHorizontalSampling * hMCU;
+    int bmp_height = 8 * maxVerticalSampling * vMCU;
+    BMP *bmp = BMP_Create(bmp_width, bmp_height, 24);
+
     /****************************開讀****************************/
-    cout << "********************開始讀取MCU********************"<<endl;
+    cout << "********************開始讀取MCU和反譯********************"<<endl;
     for( int v = 0; v < vMCU; ++v)
         for( int h = 0; h < hMCU; ++h){
             MCU curMCU = readMCU(data);
             inverseQuantify(curMCU);
             curMCU = inverseZigzag(curMCU);
             iDCT(curMCU);
-            showMCU(curMCU);
+            vector< vector<RGB> > rgb = YCbCrtoRGB(curMCU);
+            // 使用BMP_SetPixelRGB來生成BMP檔
+            for (int i = 0; i < MCUheight; ++i) 
+                for (int j = 0; j < MCUwidth; ++j) {
+                    // 計算在BMP圖像中的絕對位置
+                    int x = h * MCUwidth + j;
+                    int y = v * MCUheight + i;
+
+                    // 確保不超過BMP圖像的邊界
+                    if (x < bmp_width && y < bmp_height) {
+                        // 將RGB值寫入BMP圖像
+                        BMP_SetPixelRGB(bmp, x, y, rgb[i][j].R, rgb[i][j].G, rgb[i][j].B);
+                    }
+                }
         }
+    BMP_WriteFile(bmp, "my_photo.bmp");
 }
 int readBit(vector<unsigned char> &data ){
     static int bytePos = 0;
@@ -637,9 +658,9 @@ vector<vector<RGB>> YCbCrtoRGB(MCU &curMCU){
             [i * SOF0.component[3].verticalSampling / maxVerticalSampling]
             [j * SOF0.component[3].horizontalSampling / maxHorizontalSampling];
             //接者轉成RGB
-            rgb[i][j].R = min(max(int(Y + 1.402 * (Cr - 128)), 0), 255);
-            rgb[i][j].G = min(max(int(Y - 0.344136 * (Cb - 128) - 0.714136 * (Cr - 128)), 0), 255);
-            rgb[i][j].B = min(max(int(Y + 1.772 * (Cb - 128)), 0), 255);
+            rgb[i][j].R = min(max(int(Y + 1.402 * Cr + 128), 0), 255);
+            rgb[i][j].G = min(max(int(Y - 0.344136 * Cb - 0.714136 * Cr + 128), 0), 255);
+            rgb[i][j].B = min(max(int(Y + 1.772 * Cb + 128), 0), 255);
         }
     
     return rgb;
